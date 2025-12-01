@@ -43,7 +43,7 @@ Edit these variables in `film_scraper.py`:
 
 - `TARGET_COUNT`: Number of items to fetch (default: 2000)
 - `OUTPUT_FOLDER`: Where to save files (default: "flim_downloads")
-- `MAX_WORKERS`: Number of parallel downloads (default: 4)
+- `MAX_WORKERS`: Number of parallel downloads (default: 8)
 
 ## Output
 
