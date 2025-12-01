@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 AUTH_TOKEN = os.getenv("FLIM_AUTH_TOKEN")
 
-TARGET_COUNT = 100
+TARGET_COUNT = 2000
 OUTPUT_FOLDER = Path("flim_downloads")
 MAX_WORKERS = 8
 
@@ -80,7 +80,7 @@ def get_payload(page):
         "page": page,
         "sort_by": "",
         "order_by": "",
-        "number_per_pages": 100
+        "number_per_pages": 200
     }
 
 def check_token_expiry(token):
