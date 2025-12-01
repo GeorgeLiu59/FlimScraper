@@ -15,7 +15,7 @@ Setting up Auth and Scraping 100 Videos: [Watch on Vimeo](https://vimeo.com/1142
 
 2. **Get your authentication token:**
    - Go to https://app.flim.ai and log in
-   - Open browser DevTools (F12)
+   - Open browser DevTools (Inspect Element)
    - Go to Network tab
    - Make any API request (search)
    - Find a request to `api.flim.ai`
