@@ -1,57 +1,108 @@
-# Frameset Scraper
+# Frameset Scrapers
 
-Python script to scrape and download videos and images from Frameset.
+Python scripts to download videos and images from Frameset.
 
-## Setup
+## Scripts Overview
+`frameset_video_scraper.py`:  Downloads motion content (videos/GIFs) (`.gif`)
+`frameset_still_scraper.py`:  Downloads high-quality still images (`.png`)
 
-1. **Install Python dependencies:**
+---
+
+## frameset_video_scraper.py
+
+Downloads videos and GIFs from Frameset's CDN using metadata files.
+
+### Setup
+
+1. **Install dependencies:**
    ```bash
    pip install requests
    ```
 
 2. **Get your authentication cookies:**
    - Go to https://frameset.app and log in
-   - Open browser DevTools (F12)
-   - Go to Network tab
-   - Make any API request (search)
+   - Open browser DevTools (F12) → Network tab
+   - Make any API request (e.g., search)
    - Copy all cookies from the request headers
 
-3. **Set your cookies as environment variable:**
+3. **Set cookies as environment variable:**
    ```bash
    export FRAMESET_COOKIE_STRING='cookie1=value1; cookie2=value2; ...'
    ```
-   
-   Or on Windows:
-   ```cmd
-   set FRAMESET_COOKIE_STRING=cookie1=value1; cookie2=value2; ...
-   ```
 
-## Usage
+### Configuration
+
+Edit these variables in the script:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OUTPUT_FOLDER` | Download destination | `"OUTPUT FOLDER"` |
+| `MAX_WORKERS` | Parallel download threads | `48` |
+| `MOTION_METADATA_FILE` | Motion items metadata | `motion_metadata.json` |
+| `FRAMES_METADATA_FILE` | Frame items metadata | `frames_metadata.json` |
+
+### Usage
 
 ```bash
-python frameset_scraper.py
+python frameset_video_scraper.py
 ```
 
-## Configuration
+### Notes
 
-Edit these variables in `frameset_scraper.py`:
+- Reads from `motion_metadata.json` by default
+- Downloads from CloudFront CDN (`d13mryl9xv19vu.cloudfront.net`)
+- Automatically checks token expiry before running
+- Skips already-downloaded files
 
-- `TARGET_COUNT`: Number of items to fetch (default: 2000)
-- `OUTPUT_FOLDER`: Where to save files (default: "frameset_downloads")
-- `MAX_WORKERS`: Number of parallel downloads (default: 8)
-- `PAGE_SIZE`: Items per page (default: 400)
-- `DOWNLOAD_DELAY`: Delay between downloads in seconds (default: 0)
+---
 
-## Output
+## frameset_still_scraper.py
 
-- Motion items (videos) are saved as `{id}.gif` or `{id}.mp4` using `_fs` suffix
-- Still items (images) are saved as `{id}.jpg`, `{id}.jpeg`, or `{id}.png` using `_xl` suffix
-- Metadata is saved to `_metadata.json`
-- Look up item info by searching for the ID in the metadata file
-- Downloads all items found (uses `type` field: "motion" for gifs/videos, "still" for images)
+Downloads high-quality PNG stills via Frameset's signed URL API.
 
-## Notes
+### Setup
 
-- Cookies expire periodically - update them when the script warns you
-- The script checks token expiry before running
-- Existing downloads are skipped automatically
+1. **Install dependencies:**
+   ```bash
+   pip install curl_cffi
+   ```
+
+2. **Update cookies in script:**
+   Edit the `COOKIES` dictionary with your current session cookies from Frameset.
+
+### Configuration
+
+Edit these variables in the script:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `METADATA_FILE` | Path to metadata JSON | `"PATH TO METADATA"` |
+| `OUTPUT_FOLDER` | Download destination | `"OUTPUT FOLDER"` |
+| `MAX_WORKERS` | Parallel download threads | `4` |
+
+### Usage
+
+```bash
+python frameset_still_scraper.py
+```
+
+### How It Works
+
+1. Loads image IDs from metadata file
+2. Requests signed S3 URL from `frameset.app/api/image/{id}/download`
+3. Downloads full-resolution PNG from signed URL
+4. Handles rate limiting (429) with automatic retry
+
+### Notes
+
+- Uses `curl_cffi` to impersonate Chrome for anti-bot bypass
+- Lower default workers (4) to avoid rate limiting
+- Outputs `.png` files only
+
+---
+
+## Common Notes
+
+- **Cookies expire periodically** — update them when requests start failing
+- **Existing downloads are skipped** automatically
+- Look up item info by searching for the ID in the metadata files

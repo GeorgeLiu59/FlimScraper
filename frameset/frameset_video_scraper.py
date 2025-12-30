@@ -12,26 +12,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 COOKIE_STRING = os.getenv("FRAMESET_COOKIE_STRING", '')
-
-TARGET_COUNT = 2000
-OUTPUT_FOLDER = Path("frameset_downloads")
-MAX_WORKERS = 8
-PAGE_SIZE = 400
-
-headers = {
-    "authority": "frameset.app",
-    "accept": "*/*",
-    "accept-encoding": "gzip, deflate, br, zstd",
-    "accept-language": "en-US,en;q=0.9",
-    "referer": "https://frameset.app/search",
-    "sec-ch-ua": '"Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"macOS"',
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-}
+OUTPUT_FOLDER = Path("OUTPUT FOLDER")
+MAX_WORKERS = 48
+MOTION_METADATA_FILE = Path(__file__).parent / "motion_metadata.json"
+FRAMES_METADATA_FILE = Path(__file__).parent / "frames_metadata.json"
 
 def parse_cookies(cookie_string):
     cookies = {}
@@ -82,49 +66,41 @@ def check_token_expiry(cookies):
         pass
     return None
 
-def fetch_page(page, cookies):
-    url = f"https://frameset.app/api/search?page={page}&size={PAGE_SIZE}"
-    try:
-        response = requests.get(url, headers=headers, cookies=cookies, timeout=30)
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, dict) and data.get("success"):
-                data_obj = data.get("data", {})
-                if isinstance(data_obj, dict):
-                    items = data_obj.get("results", [])
-                    if isinstance(items, list):
-                        return items
-            return []
-        else:
-            logger.error(f"Page {page}: Error {response.status_code}")
-            return []
-    except Exception as e:
-        logger.error(f"Page {page}: {e}")
-        return []
-
-def fetch_metadata(cookies):
-    logger.info(f"Fetching metadata for {TARGET_COUNT} items...")
+def load_metadata(load_frames=False):
     all_items = []
-    page = 1
     
-    while len(all_items) < TARGET_COUNT:
-        items = fetch_page(page, cookies)
-        if not items:
-            logger.info("No more results.")
-            break
-        all_items.extend(items)
-        logger.info(f"Collected {len(all_items)} items...")
-        page += 1
-        time.sleep(0.5)
+    if MOTION_METADATA_FILE.exists():
+        logger.info(f"Loading motion metadata from {MOTION_METADATA_FILE.name}...")
+        try:
+            with open(MOTION_METADATA_FILE, 'r', encoding='utf-8') as f:
+                motion_items = json.load(f)
+                if isinstance(motion_items, list):
+                    all_items.extend(motion_items)
+                    logger.info(f"Loaded {len(motion_items):,} motion items")
+                else:
+                    logger.warning("Motion metadata file has unexpected format")
+        except Exception as e:
+            logger.error(f"Failed to load motion metadata: {e}")
+    else:
+        logger.warning(f"Motion metadata file not found: {MOTION_METADATA_FILE}")
     
-    return all_items[:TARGET_COUNT]
-
-def save_metadata(items):
-    OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
-    filepath = OUTPUT_FOLDER / "_metadata.json"
-    with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(items, f, indent=2, ensure_ascii=False)
-    logger.info(f"Saved {len(items)} items to {filepath}")
+    if load_frames:
+        if FRAMES_METADATA_FILE.exists():
+            logger.info(f"Loading frames metadata from {FRAMES_METADATA_FILE.name}...")
+            try:
+                with open(FRAMES_METADATA_FILE, 'r', encoding='utf-8') as f:
+                    frames_items = json.load(f)
+                    if isinstance(frames_items, list):
+                        all_items.extend(frames_items)
+                        logger.info(f"Loaded {len(frames_items):,} frames items")
+                    else:
+                        logger.warning("Frames metadata file has unexpected format")
+            except Exception as e:
+                logger.error(f"Failed to load frames metadata: {e}")
+        else:
+            logger.warning(f"Frames metadata file not found: {FRAMES_METADATA_FILE}")
+    
+    return all_items
 
 def download_media(item, index, total, cookies):
     item_id = item.get("id") or item.get("_id") or f"unknown_{index}"
@@ -141,12 +117,12 @@ def download_media(item, index, total, cookies):
         suffix = "_fs"
         extensions = ["gif", "mp4"]
     
-    filename = f"{item_id}.{extensions[0]}"
-    filepath = OUTPUT_FOLDER / filename
-    
-    if filepath.exists():
-        logger.info(f"[{index}/{total}] Skipping (exists): {filename}")
-        return
+    # Check if file already exists with any of the possible extensions
+    for ext in extensions:
+        existing_file = OUTPUT_FOLDER / f"{item_id}.{ext}"
+        if existing_file.exists():
+            logger.info(f"[{index}/{total}] Skipping (exists): {existing_file.name}")
+            return
     
     cdn_headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
@@ -176,9 +152,6 @@ def download_media(item, index, total, cookies):
                 if not content_type or any(ct in content_type for ct in ["video", "image", "gif", "octet-stream", "binary"]):
                     final_filename = f"{item_id}.{attempt_ext}"
                     final_filepath = OUTPUT_FOLDER / final_filename
-                    
-                    if final_filepath.exists():
-                        continue
                     
                     with open(final_filepath, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
@@ -213,28 +186,23 @@ def main():
             return
         logger.info(f"Token expires in {hours_left:.1f} hours")
     
-    items = fetch_metadata(cookies)
+    items = load_metadata(load_frames=False)
     if not items:
-        logger.warning("No items found. Check if your cookie is valid.")
+        logger.warning("No items found in metadata files.")
         return
     
-    save_metadata(items)
+    logger.info(f"Found {len(items):,} motion items to download")
     
-    motion_items = [item for item in items if item.get("type") == "motion"]
-    still_items = [item for item in items if item.get("type") == "still"]
-    
-    logger.info(f"Found {len(motion_items)} motion items and {len(still_items)} still items out of {len(items)} total")
-    
-    all_media = motion_items + still_items
-    if all_media:
-        logger.info(f"Downloading {len(all_media)} media files with {MAX_WORKERS} workers...")
+    if items:
+        logger.info(f"Downloading {len(items):,} motion files with {MAX_WORKERS} workers...")
+        OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = [executor.submit(download_media, item, i+1, len(all_media), cookies) for i, item in enumerate(all_media)]
+            futures = [executor.submit(download_media, item, i+1, len(items), cookies) for i, item in enumerate(items)]
             for future in as_completed(futures):
                 pass
         logger.info("Downloads complete!")
     else:
-        logger.info("No media to download.")
+        logger.info("No motion items to download.")
     
     elapsed_time = time.time() - start_time
     minutes = int(elapsed_time // 60)
@@ -246,3 +214,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
